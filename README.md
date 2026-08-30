@@ -1,4 +1,4 @@
-# Parwarish.ai
+# Parwarish.ai 🤖
 
 Parwarish.ai is an AI-powered, adaptive learning and behavioral tracking platform designed specifically for autistic children and their parents/therapists. 
 
