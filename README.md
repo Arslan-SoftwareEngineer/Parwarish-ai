@@ -1,4 +1,4 @@
-# Parwarish.ai 🌟
+# Parwarish.ai
 
 Parwarish.ai is an AI-powered, adaptive learning and behavioral tracking platform designed specifically for autistic children and their parents/therapists. 
 
@@ -6,7 +6,7 @@ This repository contains the full stack of the platform:
 * `/parwarish_ai`: The Flutter mobile frontend (Adaptive UI, TTS, STT, Camera integration)
 * `/parwarish_backend`: The Python FastAPI backend (Data aggregation, parent routing, and analytics)
 
-## ✨ Frontend Features (Flutter)
+## 📱 Frontend Features (Flutter)
 * **Adaptive Sensory Dashboard:** UI restructures based on Mild, Moderate, or Severe autism levels.
 * **AI-Driven Lessons:** Video lessons that pause for real-time STT (Voice/Breathing) and Camera (Emotion) interaction.
 * **Errant Tap Tracking:** Silently logs aimless tapping to Firebase to identify sensory overload or frustration.
