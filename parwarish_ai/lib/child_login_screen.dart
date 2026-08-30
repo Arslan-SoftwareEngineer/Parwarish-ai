@@ -17,25 +17,49 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isLogin = true; // Tracks whether the user is logging in or signing up
 
-  Future<void> _login() async {
+  Future<void> _authenticate() async {
     setState(() => _isLoading = true);
     try {
-      // Authenticate with Firebase
-      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      UserCredential userCredential;
+
+      if (_isLogin) {
+        // Log in existing user
+        userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+      } else {
+        // Register new user
+        userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+
+        // Initialize a basic parent document in Firestore to prepare for the Parent Dashboard API
+        if (widget.role == 'parent') {
+          await FirebaseFirestore.instance.collection('parents').doc(userCredential.user!.uid).set({
+            'email': _emailController.text.trim(),
+            'created_at': FieldValue.serverTimestamp(),
+          });
+        }
+      }
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_role', widget.role);
 
       if (widget.role == 'child') {
-        var doc = await FirebaseFirestore.instance.collection('children').where('parent_uid', isEqualTo: userCredential.user!.uid).limit(1).get();
+        var doc = await FirebaseFirestore.instance.collection('children')
+            .where('parent_uid', isEqualTo: userCredential.user!.uid)
+            .limit(1)
+            .get();
+
         if (doc.docs.isNotEmpty) {
           await prefs.setString('child_id', doc.docs.first.id);
           await prefs.setString('autism_level', doc.docs.first.get('autism_level') ?? 'Mild');
         }
+
         if (!mounted) return;
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const ChildDashboard()));
       } else {
@@ -53,7 +77,9 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
   @override
   Widget build(BuildContext context) {
     bool isChild = widget.role == 'child';
-    List<Color> themeColors = isChild ? [const Color(0xFF43CBFF), const Color(0xFF9708CC)] : [const Color(0xFFFF9A44), const Color(0xFFFC6076)];
+    List<Color> themeColors = isChild
+        ? [const Color(0xFF43CBFF), const Color(0xFF9708CC)]
+        : [const Color(0xFFFF9A44), const Color(0xFFFC6076)];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FC),
@@ -68,17 +94,24 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
               Icon(isChild ? Icons.face_retouching_natural_rounded : Icons.admin_panel_settings_rounded, size: 100, color: themeColors[0])
                   .animate().scale(duration: 500.ms, curve: Curves.easeOutBack),
               const SizedBox(height: 20),
-              Text(isChild ? 'Child Login' : 'Parent Login', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: themeColors[1]))
-                  .animate().fadeIn(delay: 200.ms).slideY(begin: 0.5, end: 0),
+
+              Text(
+                  isChild
+                      ? (_isLogin ? 'Child Login' : 'Child Sign Up')
+                      : (_isLogin ? 'Parent Login' : 'Parent Sign Up'),
+                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: themeColors[1])
+              ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.5, end: 0),
+
               const SizedBox(height: 40),
               _buildTextField(controller: _emailController, icon: Icons.email_rounded, label: 'Email', delay: 400),
               const SizedBox(height: 20),
               _buildTextField(controller: _passwordController, icon: Icons.lock_rounded, label: 'Password', isObscure: true, delay: 500),
               const SizedBox(height: 40),
+
               _isLoading
                   ? CircularProgressIndicator(color: themeColors[0])
                   : GestureDetector(
-                onTap: _login, // Triggers your auth logic
+                onTap: _authenticate,
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 18),
@@ -87,9 +120,25 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [BoxShadow(color: themeColors[0].withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))],
                   ),
-                  child: const Center(child: Text('Login', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white))),
+                  child: Center(
+                      child: Text(
+                          _isLogin ? 'Login' : 'Sign Up',
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)
+                      )
+                  ),
                 ),
               ).animate().scale(delay: 600.ms, duration: 400.ms, curve: Curves.easeOutBack),
+
+              const SizedBox(height: 20),
+
+              // Toggle Button for Login/Sign Up
+              TextButton(
+                onPressed: () => setState(() => _isLogin = !_isLogin),
+                child: Text(
+                  _isLogin ? "Don't have an account? Sign Up" : "Already have an account? Login",
+                  style: TextStyle(color: themeColors[1], fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ).animate().fadeIn(delay: 700.ms),
             ],
           ),
         ),
