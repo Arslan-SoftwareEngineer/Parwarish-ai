@@ -157,16 +157,16 @@ class _LessonScreenState extends State<LessonScreen> {
 
     if (_childId.isNotEmpty) {
       try {
-        final doc = await FirebaseFirestore.instance.collection('children').doc(_childId).get();
-        final today = DateTime.now().toIso8601String().substring(0, 10);
-        final lastLessonDate = doc.data()!.containsKey('last_lesson_date') ? doc.get('last_lesson_date') : '';
-
-        if (lastLessonDate != today) {
-          await FirebaseFirestore.instance.collection('children').doc(_childId).update({
-            'current_streak': FieldValue.increment(1),
-            'last_lesson_date': today,
-          });
-        }
+        // Log the completed module to the Parent Analytics dashboard
+        await FirebaseFirestore.instance
+            .collection('children')
+            .doc(_childId)
+            .collection('activity_logs')
+            .add({
+          'module_name': widget.lessonTitle,
+          'interaction_type': widget.interactionType,
+          'completed_at': FieldValue.serverTimestamp(),
+        });
       } catch (e) {
         print("Firebase Error: $e");
       }

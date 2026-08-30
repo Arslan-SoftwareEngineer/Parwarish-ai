@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>997569502705-9a70hrvd1873u85tfttvbkobtanbiu08.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.997569502705-9a70hrvd1873u85tfttvbkobtanbiu08</string>
+	<key>API_KEY</key>
+	<string>AIzaSyDrU4KOxQf_nMOC4c4Sdc-_G2rbIpjDEuI</string>
+	<key>GCM_SENDER_ID</key>
+	<string>997569502705</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.example.parwarishAi</string>
+	<key>PROJECT_ID</key>
+	<string>parwarish-ai</string>
+	<key>STORAGE_BUCKET</key>
+	<string>parwarish-ai.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:997569502705:ios:f16ee142a2668a43ba3850</string>
+</dict>
+</plist>

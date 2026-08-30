@@ -44,6 +44,8 @@ dependencies:
   lottie: ^3.5.1
   camera: ^0.12.0+2
   flutter_animate: ^4.5.2
+  google_sign_in: ^6.2.1
+  sign_in_with_apple: ^8.2.0
 
 dev_dependencies:
   flutter_test:

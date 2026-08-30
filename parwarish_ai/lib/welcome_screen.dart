@@ -31,7 +31,7 @@ class WelcomeScreen extends StatelessWidget {
               ).animate().fadeIn(duration: 600.ms).slideY(begin: -0.3, end: 0),
               const SizedBox(height: 10),
               const Text(
-                'Who is playing today?',
+                'Who is logging in?',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white70),
               ).animate().fadeIn(delay: 300.ms),
               const SizedBox(height: 60),

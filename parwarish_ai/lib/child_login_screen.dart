@@ -3,7 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'child_dashboard.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'child_profile_selection.dart';
+import 'parent_dashboard.dart';
 
 class ChildLoginScreen extends StatefulWidget {
   final String role;
@@ -17,7 +20,7 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
-  bool _isLogin = true; // Tracks whether the user is logging in or signing up
+  bool _isLogin = true;
 
   Future<void> _authenticate() async {
     setState(() => _isLoading = true);
@@ -25,19 +28,16 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
       UserCredential userCredential;
 
       if (_isLogin) {
-        // Log in existing user
         userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
       } else {
-        // Register new user
         userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
 
-        // Initialize a basic parent document in Firestore to prepare for the Parent Dashboard API
         if (widget.role == 'parent') {
           await FirebaseFirestore.instance.collection('parents').doc(userCredential.user!.uid).set({
             'email': _emailController.text.trim(),
@@ -50,27 +50,85 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
       await prefs.setString('user_role', widget.role);
 
       if (widget.role == 'child') {
-        var doc = await FirebaseFirestore.instance.collection('children')
-            .where('parent_uid', isEqualTo: userCredential.user!.uid)
-            .limit(1)
-            .get();
-
-        if (doc.docs.isNotEmpty) {
-          await prefs.setString('child_id', doc.docs.first.id);
-          await prefs.setString('autism_level', doc.docs.first.get('autism_level') ?? 'Mild');
-        }
-
         if (!mounted) return;
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const ChildDashboard()));
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const ChildProfileSelection()));
       } else {
-        // Parent Dashboard placeholder
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Parent Dashboard coming soon!')));
-        setState(() => _isLoading = false);
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const ParentDashboard()));
       }
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.redAccent));
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() => _isLoading = true);
+    try {
+      // Explicitly instantiating with scopes forces the analyzer to link the factory constructor
+      final GoogleSignIn googleSignIn = GoogleSignIn(scopes: ['email']);
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
+      if (googleUser == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final OAuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      await _handleSocialAuthSuccess(userCredential);
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Google Sign-In failed: $e')));
+    }
+  }
+
+  Future<void> _signInWithApple() async {
+    setState(() => _isLoading = true);
+    try {
+      final AuthorizationCredentialAppleID appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+      );
+
+      final OAuthProvider oAuthProvider = OAuthProvider('apple.com');
+      final OAuthCredential credential = oAuthProvider.credential(
+        idToken: appleCredential.identityToken,
+        accessToken: appleCredential.authorizationCode,
+      );
+
+      UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      await _handleSocialAuthSuccess(userCredential);
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Apple Sign-In failed: $e')));
+    }
+  }
+
+  Future<void> _handleSocialAuthSuccess(UserCredential userCredential) async {
+    if (widget.role == 'parent') {
+      final parentDoc = await FirebaseFirestore.instance.collection('parents').doc(userCredential.user!.uid).get();
+      if (!parentDoc.exists) {
+        await FirebaseFirestore.instance.collection('parents').doc(userCredential.user!.uid).set({
+          'email': userCredential.user!.email,
+          'created_at': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_role', widget.role);
+
+    if (widget.role == 'child') {
+      if (!mounted) return;
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const ChildProfileSelection()));
+    } else {
+      if (!mounted) return;
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const ParentDashboard()));
     }
   }
 
@@ -131,7 +189,6 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
 
               const SizedBox(height: 20),
 
-              // Toggle Button for Login/Sign Up
               TextButton(
                 onPressed: () => setState(() => _isLogin = !_isLogin),
                 child: Text(
@@ -139,6 +196,36 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
                   style: TextStyle(color: themeColors[1], fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ).animate().fadeIn(delay: 700.ms),
+
+              const SizedBox(height: 10),
+
+              Row(
+                children: [
+                  Expanded(child: Divider(color: Colors.grey[400], thickness: 1)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Text('Or continue with', style: TextStyle(color: Colors.grey[500], fontWeight: FontWeight.bold)),
+                  ),
+                  Expanded(child: Divider(color: Colors.grey[400], thickness: 1)),
+                ],
+              ).animate().fadeIn(delay: 800.ms),
+
+              const SizedBox(height: 20),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildSocialButton(
+                    child: const Text('G', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.redAccent)),
+                    onTap: _signInWithGoogle,
+                  ),
+                  const SizedBox(width: 25),
+                  _buildSocialButton(
+                    child: const Icon(Icons.apple_rounded, size: 34, color: Colors.black),
+                    onTap: _signInWithApple,
+                  ),
+                ],
+              ).animate().scale(delay: 900.ms, duration: 400.ms, curve: Curves.easeOutBack),
             ],
           ),
         ),
@@ -160,5 +247,20 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFF2B2D42), width: 2)),
       ),
     ).animate().fadeIn(delay: delay.ms).slideX(begin: 0.2, end: 0);
+  }
+
+  Widget _buildSocialButton({required Widget child, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+        ),
+        child: child,
+      ),
+    );
   }
 }

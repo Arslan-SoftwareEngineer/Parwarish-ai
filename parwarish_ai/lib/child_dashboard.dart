@@ -43,6 +43,43 @@ class _ChildDashboardState extends State<ChildDashboard> {
       _childId = prefs.getString('child_id') ?? '';
       _isLoading = false;
     });
+
+    if (_childId.isNotEmpty) {
+      await _updateDailyStreak();
+    }
+  }
+
+  Future<void> _updateDailyStreak() async {
+    final docRef = FirebaseFirestore.instance.collection('children').doc(_childId);
+    final doc = await docRef.get();
+
+    if (doc.exists) {
+      final data = doc.data() as Map<String, dynamic>;
+      final lastLogin = data['last_login'] as Timestamp?;
+      int currentStreak = data['current_streak'] ?? 0;
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      if (lastLogin != null) {
+        final lastLoginDate = lastLogin.toDate();
+        final lastLoginDay = DateTime(lastLoginDate.year, lastLoginDate.month, lastLoginDate.day);
+        final difference = today.difference(lastLoginDay).inDays;
+
+        if (difference == 1) {
+          currentStreak += 1; // Logged in the next day
+        } else if (difference > 1) {
+          currentStreak = 1; // Missed a day, reset streak
+        }
+      } else {
+        currentStreak = 1; // First ever login
+      }
+
+      await docRef.update({
+        'last_login': FieldValue.serverTimestamp(),
+        'current_streak': currentStreak,
+      });
+    }
   }
 
   void _triggerHappyPet() {
