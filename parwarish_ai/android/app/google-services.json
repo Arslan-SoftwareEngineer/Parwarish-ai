@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "997569502705",
+    "project_id": "parwarish-ai",
+    "storage_bucket": "parwarish-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:997569502705:android:f69d4dcb4c6a6ff5ba3850",
+        "android_client_info": {
+          "package_name": "com.example.parwarish_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZ3irlbOOJPRgA_96EiHs4gH3e781Ecwc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
