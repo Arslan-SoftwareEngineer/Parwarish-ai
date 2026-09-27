@@ -8,6 +8,8 @@ class SequenceStepItem {
   final int stepNumber;
   final String titleEn;
   final String titleUr;
+  final String actionEn;
+  final String actionUr;
   final IconData icon;
   final LinearGradient gradient;
 
@@ -15,6 +17,8 @@ class SequenceStepItem {
     required this.stepNumber,
     required this.titleEn,
     required this.titleUr,
+    this.actionEn = 'Complete Step',
+    this.actionUr = 'مرحلہ مکمل کریں',
     required this.icon,
     required this.gradient,
   });
@@ -39,8 +43,9 @@ class DragSequenceGame extends StatefulWidget {
 }
 
 class _DragSequenceGameState extends State<DragSequenceGame> {
-  late List<SequenceStepItem> _shuffledSteps;
-  final List<SequenceStepItem> _placedSteps = [];
+  late List<SequenceStepItem> _steps;
+  int _currentStepIndex = 0;
+  bool _isStepAnimating = false;
 
   @override
   void initState() {
@@ -50,90 +55,117 @@ class _DragSequenceGameState extends State<DragSequenceGame> {
         stepNumber: 1,
         titleEn: 'Turn on Water & Wet Hands',
         titleUr: 'پانی کھولیں اور ہاتھ گیلے کریں',
+        actionEn: 'Turn On Water 💧',
+        actionUr: 'پانی کھولیں 💧',
         icon: Icons.water_drop_rounded,
         gradient: AppTheme.blueCyanGradient,
       ),
       const SequenceStepItem(
         stepNumber: 2,
         titleEn: 'Apply Soap & Rub Palms',
-        titleUr: 'صابن لگائیں اور رگڑیں',
+        titleUr: 'صابن لگائیں اور جھاگ بنائیں',
+        actionEn: 'Rub Soapy Bubbles 🧼',
+        actionUr: 'صابن ملیں 🧼',
         icon: Icons.soap_rounded,
         gradient: AppTheme.orangePinkGradient,
       ),
       const SequenceStepItem(
         stepNumber: 3,
         titleEn: 'Rinse Clean with Water',
-        titleUr: 'پانی سے ہاتھ دھوئیں',
+        titleUr: 'پانی سے صابن صاف کریں',
+        actionEn: 'Rinse with Water 🚿',
+        actionUr: 'پانی سے دھوئیں 🚿',
         icon: Icons.clean_hands_rounded,
         gradient: AppTheme.greenMintGradient,
       ),
       const SequenceStepItem(
         stepNumber: 4,
         titleEn: 'Dry with Soft Towel',
-        titleUr: 'تولیے سے ہاتھ خشک کریں',
+        titleUr: 'نرم تولیے سے ہاتھ خشک کریں',
+        actionEn: 'Dry Hands with Towel 🧺',
+        actionUr: 'تولیے سے خشک کریں 🧺',
         icon: Icons.dry_cleaning_rounded,
         gradient: AppTheme.purpleBlueGradient,
       ),
     ];
 
-    final steps = widget.customSteps ?? defaultSteps;
-    _shuffledSteps = List.from(steps)..shuffle();
+    _steps = widget.customSteps ?? defaultSteps;
+    _speakCurrentStep();
   }
 
-  void _onStepTapped(SequenceStepItem step) {
-    if (_placedSteps.contains(step)) return;
+  void _speakCurrentStep() {
+    final isUrdu = LocalizationService.instance.isUrdu;
+    final current = _steps[_currentStepIndex];
+    TtsService.instance.speak(
+      isUrdu ? current.titleUr : current.titleEn,
+      langCode: isUrdu ? 'ur' : 'en',
+    );
+  }
+
+  void _completeCurrentStep() {
+    if (_isStepAnimating) return;
 
     setState(() {
-      _placedSteps.add(step);
-      _shuffledSteps.remove(step);
+      _isStepAnimating = true;
     });
 
     final isUrdu = LocalizationService.instance.isUrdu;
+    final current = _steps[_currentStepIndex];
+
+    final feedbackEn = _getStepFeedbackEn(current.stepNumber);
+    final feedbackUr = _getStepFeedbackUr(current.stepNumber);
+
     TtsService.instance.speak(
-      isUrdu ? step.titleUr : step.titleEn,
+      isUrdu ? feedbackUr : feedbackEn,
       langCode: isUrdu ? 'ur' : 'en',
     );
 
-    // Check if all placed
-    if (_shuffledSteps.isEmpty) {
-      _verifySequence();
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+
+      if (_currentStepIndex < _steps.length - 1) {
+        setState(() {
+          _currentStepIndex++;
+          _isStepAnimating = false;
+        });
+        _speakCurrentStep();
+      } else {
+        TtsService.instance.speak(
+          isUrdu ? 'شاباش! ہاتھ بالکل صاف اور چمکدار ہیں!' : 'Superstar! Clean and fresh hands! You did it!',
+          langCode: isUrdu ? 'ur' : 'en',
+        );
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted) widget.onGameCompleted();
+        });
+      }
+    });
+  }
+
+  String _getStepFeedbackEn(int step) {
+    switch (step) {
+      case 1:
+        return 'Splash! Water is on and hands are wet!';
+      case 2:
+        return 'Great job! Lovely bubbles on hands!';
+      case 3:
+        return 'Awesome! All soap bubbles rinsed clean!';
+      case 4:
+      default:
+        return 'Superstar! Hands are clean and soft!';
     }
   }
 
-  void _verifySequence() {
-    // Check if sorted by stepNumber
-    bool correct = true;
-    for (int i = 0; i < _placedSteps.length; i++) {
-      if (_placedSteps[i].stepNumber != i + 1) {
-        correct = false;
-        break;
-      }
-    }
-
-    if (correct) {
-      final isUrdu = LocalizationService.instance.isUrdu;
-      TtsService.instance.speak(
-        isUrdu ? 'شاندار! آپ نے تمام مراحل درست ترتیب دیے!' : 'Superstar! Perfect sequence completed!',
-        langCode: isUrdu ? 'ur' : 'en',
-      );
-      Future.delayed(const Duration(milliseconds: 900), () {
-        if (mounted) widget.onGameCompleted();
-      });
-    } else {
-      // Friendly reset to try again
-      final isUrdu = LocalizationService.instance.isUrdu;
-      TtsService.instance.speak(
-        isUrdu ? 'آئیں دوبارہ ترتیب دیں!' : 'Let\'s try ordering them from step 1 again!',
-        langCode: isUrdu ? 'ur' : 'en',
-      );
-      Future.delayed(const Duration(seconds: 1), () {
-        if (mounted) {
-          setState(() {
-            _shuffledSteps.addAll(_placedSteps);
-            _placedSteps.clear();
-          });
-        }
-      });
+  String _getStepFeedbackUr(int step) {
+    switch (step) {
+      case 1:
+        return 'شاباش! ہاتھ گیلے ہو گئے!';
+      case 2:
+        return 'بہت خوب! صابن کی جھاگ بن گئی!';
+      case 3:
+        return 'شاندار! صابن صاف ہو گیا!';
+      case 4:
+      default:
+        return 'زبردست! ہاتھ بالکل صاف ہیں!';
     }
   }
 
@@ -141,6 +173,7 @@ class _DragSequenceGameState extends State<DragSequenceGame> {
   Widget build(BuildContext context) {
     final isUrdu = LocalizationService.instance.isUrdu;
     final prompt = isUrdu ? widget.promptUr : widget.promptEn;
+    final currentStep = _steps[_currentStepIndex];
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -157,7 +190,7 @@ class _DragSequenceGameState extends State<DragSequenceGame> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.touch_app_rounded, color: AppTheme.electricBlue, size: 26),
+              const Icon(Icons.clean_hands_rounded, color: AppTheme.electricBlue, size: 26),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -171,132 +204,202 @@ class _DragSequenceGameState extends State<DragSequenceGame> {
 
         const SizedBox(height: 16),
 
-        // Target Sequence Slots (Placed items)
+        // Step Progress Tracker Bar
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             boxShadow: AppTheme.softCardShadow,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    isUrdu ? 'ترتیب شدہ مراحل:' : 'Your Completed Steps:',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
-                  ),
-                  Text(
-                    '${_placedSteps.length} / ${_placedSteps.length + _shuffledSteps.length}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryOrange),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              if (_placedSteps.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                    child: Text(
-                      isUrdu ? 'نیچے دیے گئے مراحل پر کلک کر کے ترتیب دیں' : 'Tap the steps below in order 1, 2, 3...',
-                      style: const TextStyle(color: AppTheme.textLight, fontSize: 13),
-                    ),
-                  ),
-                )
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _placedSteps.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final step = entry.value;
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: _steps.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final step = entry.value;
+              final isDone = idx < _currentStepIndex;
+              final isCurrent = idx == _currentStepIndex;
+
+              return Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
-                        gradient: step.gradient,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: AppTheme.heavyShadow(step.gradient.colors.first, opacity: 0.3, blur: 8),
+                        shape: BoxShape.circle,
+                        gradient: isDone || isCurrent ? step.gradient : null,
+                        color: isDone || isCurrent ? null : Colors.grey.shade200,
+                        boxShadow: isCurrent
+                            ? AppTheme.heavyShadow(step.gradient.colors.first, opacity: 0.4, blur: 8)
+                            : null,
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircleAvatar(
-                            radius: 10,
-                            backgroundColor: Colors.white,
-                            child: Text(
-                              '${index + 1}',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: step.gradient.colors.first),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(step.icon, color: Colors.white, size: 16),
-                          const SizedBox(width: 6),
-                          Text(
-                            isUrdu ? step.titleUr : step.titleEn,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                          ),
-                        ],
+                      child: Center(
+                        child: isDone
+                            ? const Icon(Icons.check_rounded, color: Colors.white, size: 20)
+                            : Icon(
+                                step.icon,
+                                color: isCurrent ? Colors.white : Colors.grey.shade500,
+                                size: 18,
+                              ),
                       ),
-                    ).animate().scale(duration: 250.ms, curve: Curves.easeOutBack);
-                  }).toList(),
+                    ),
+                    if (idx < _steps.length - 1)
+                      Expanded(
+                        child: Container(
+                          height: 4,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: isDone ? AppTheme.mintGreen : Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-            ],
+              );
+            }).toList(),
           ),
         ),
 
         const SizedBox(height: 16),
 
-        // Available Steps to Tap/Pick
-        Text(
-          isUrdu ? 'مرحلہ منتخب کریں:' : 'Tap next step:',
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.textSecondary),
-        ),
-        const SizedBox(height: 8),
-
-        ..._shuffledSteps.map((step) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(18),
-                onTap: () => _onStepTapped(step),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        // Main Active Step Card
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 350),
+          transitionBuilder: (child, animation) {
+            return ScaleTransition(scale: animation, child: FadeTransition(opacity: animation, child: child));
+          },
+          child: Container(
+            key: ValueKey<int>(_currentStepIndex),
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: AppTheme.softCardShadow,
+              border: Border.all(color: currentStep.gradient.colors.first.withValues(alpha: 0.35), width: 2),
+            ),
+            child: Column(
+              children: [
+                // Step Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                   decoration: BoxDecoration(
-                    gradient: step.gradient,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: AppTheme.heavyShadow(step.gradient.colors.first, opacity: 0.35, blur: 12),
+                    color: currentStep.gradient.colors.first.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.25),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(step.icon, color: Colors.white, size: 22),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(
-                          isUrdu ? step.titleUr : step.titleEn,
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
-                      ),
-                      const Icon(Icons.add_circle_outline_rounded, color: Colors.white, size: 24),
-                    ],
+                  child: Text(
+                    isUrdu
+                        ? 'مرحلہ ${_currentStepIndex + 1} از ${_steps.length}'
+                        : 'Step ${_currentStepIndex + 1} of ${_steps.length}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: currentStep.gradient.colors.first,
+                    ),
                   ),
                 ),
-              ),
+
+                const SizedBox(height: 18),
+
+                // Step Illustration Circle
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: currentStep.gradient,
+                    boxShadow: AppTheme.heavyShadow(currentStep.gradient.colors.first, opacity: 0.4, blur: 20),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      currentStep.icon,
+                      color: Colors.white,
+                      size: 52,
+                    ),
+                  ),
+                ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(
+                      begin: const Offset(0.95, 0.95),
+                      end: const Offset(1.05, 1.05),
+                      duration: 1200.ms,
+                      curve: Curves.easeInOut,
+                    ),
+
+                const SizedBox(height: 18),
+
+                // Step Title (Urdu / English)
+                Text(
+                  isUrdu ? currentStep.titleUr : currentStep.titleEn,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+
+                const SizedBox(height: 6),
+
+                Text(
+                  isUrdu ? currentStep.titleEn : currentStep.titleUr,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+
+                const SizedBox(height: 22),
+
+                // Big Action Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _completeCurrentStep,
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      elevation: 4,
+                      shadowColor: currentStep.gradient.colors.first.withValues(alpha: 0.5),
+                    ),
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        gradient: currentStep.gradient,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Center(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (_isStepAnimating) ...[
+                              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 26),
+                              const SizedBox(width: 8),
+                              Text(
+                                isUrdu ? 'شاباش!' : 'Done! ✨',
+                                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                              ),
+                            ] else ...[
+                              Icon(currentStep.icon, color: Colors.white, size: 24),
+                              const SizedBox(width: 10),
+                              Text(
+                                isUrdu ? currentStep.actionUr : currentStep.actionEn,
+                                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ).animate().fadeIn(duration: 300.ms).slideX(begin: 0.05, end: 0);
-        }),
+          ),
+        ),
+
+        const SizedBox(height: 16),
       ],
     );
   }

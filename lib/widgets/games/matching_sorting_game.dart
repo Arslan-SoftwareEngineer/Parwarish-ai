@@ -9,7 +9,7 @@ class MatchItem {
   final String labelEn;
   final String labelUr;
   final IconData icon;
-  final String targetCategory; // 'school' or 'home'
+  final bool isSchoolItem;
   final LinearGradient gradient;
 
   const MatchItem({
@@ -17,7 +17,7 @@ class MatchItem {
     required this.labelEn,
     required this.labelUr,
     required this.icon,
-    required this.targetCategory,
+    required this.isSchoolItem,
     required this.gradient,
   });
 }
@@ -39,13 +39,13 @@ class MatchingSortingGame extends StatefulWidget {
 }
 
 class _MatchingSortingGameState extends State<MatchingSortingGame> {
-  final List<MatchItem> _availableItems = [
+  final List<MatchItem> _items = [
     const MatchItem(
       id: 'it_1',
       labelEn: 'Notebook & Pencil',
       labelUr: 'کاپی اور پنسل',
       icon: Icons.menu_book_rounded,
-      targetCategory: 'school',
+      isSchoolItem: true,
       gradient: AppTheme.blueCyanGradient,
     ),
     const MatchItem(
@@ -53,52 +53,122 @@ class _MatchingSortingGameState extends State<MatchingSortingGame> {
       labelEn: 'Lunch Box',
       labelUr: 'لنچ باکس',
       icon: Icons.lunch_dining_rounded,
-      targetCategory: 'school',
+      isSchoolItem: true,
       gradient: AppTheme.orangePinkGradient,
     ),
     const MatchItem(
       id: 'it_3',
-      labelEn: 'Soft Pillow',
+      labelEn: 'Soft Bed Pillow',
       labelUr: 'نرم تکیہ',
       icon: Icons.bed_rounded,
-      targetCategory: 'home',
+      isSchoolItem: false,
       gradient: AppTheme.purpleBlueGradient,
     ),
     const MatchItem(
       id: 'it_4',
-      labelEn: 'Teddy Bear',
-      labelUr: 'ٹیڈی بیئر',
-      icon: Icons.smart_toy_rounded,
-      targetCategory: 'home',
+      labelEn: 'Water Bottle',
+      labelUr: 'پانی کی بوتل',
+      icon: Icons.water_drop_rounded,
+      isSchoolItem: true,
       gradient: AppTheme.greenMintGradient,
+    ),
+    const MatchItem(
+      id: 'it_5',
+      labelEn: 'Teddy Bear Toy',
+      labelUr: 'ٹیڈی بیئر کھلونا',
+      icon: Icons.smart_toy_rounded,
+      isSchoolItem: false,
+      gradient: AppTheme.calmLavenderGradient,
     ),
   ];
 
-  final List<MatchItem> _sortedSchool = [];
-  final List<MatchItem> _sortedHome = [];
+  int _currentIndex = 0;
+  bool _isAnsweredCorrectly = false;
+  bool _isWigglingWrong = false;
 
-  void _sortItem(MatchItem item, String category) {
-    if (item.targetCategory == category) {
+  @override
+  void initState() {
+    super.initState();
+    _speakCurrentItem();
+  }
+
+  void _speakCurrentItem() {
+    final isUrdu = LocalizationService.instance.isUrdu;
+    final item = _items[_currentIndex];
+    TtsService.instance.speak(
+      isUrdu
+          ? '${item.labelUr}۔ کیا یہ اسکول کی چیز ہے؟'
+          : '${item.labelEn}. Is this a school item?',
+      langCode: isUrdu ? 'ur' : 'en',
+    );
+  }
+
+  void _onAnswerSelected(bool selectedIsSchool) {
+    if (_isAnsweredCorrectly) return;
+
+    final currentItem = _items[_currentIndex];
+    final isUrdu = LocalizationService.instance.isUrdu;
+
+    if (selectedIsSchool == currentItem.isSchoolItem) {
+      // Correct Answer
       setState(() {
-        _availableItems.remove(item);
-        if (category == 'school') {
-          _sortedSchool.add(item);
-        } else {
-          _sortedHome.add(item);
-        }
+        _isAnsweredCorrectly = true;
+        _isWigglingWrong = false;
       });
 
-      final isUrdu = LocalizationService.instance.isUrdu;
-      TtsService.instance.speak(
-        isUrdu ? '${item.labelUr} بالکل درست!' : '${item.labelEn} sorted perfectly!',
-        langCode: isUrdu ? 'ur' : 'en',
-      );
-
-      if (_availableItems.isEmpty) {
-        Future.delayed(const Duration(milliseconds: 700), () {
-          if (mounted) widget.onGameCompleted();
-        });
+      if (currentItem.isSchoolItem) {
+        TtsService.instance.speak(
+          isUrdu ? 'شاباش! ${currentItem.labelUr} اسکول بیگ میں جائے گا!' : 'Super! ${currentItem.labelEn} goes into the school bag!',
+          langCode: isUrdu ? 'ur' : 'en',
+        );
+      } else {
+        TtsService.instance.speak(
+          isUrdu ? 'بالکل ٹھیک! ${currentItem.labelUr} گھر پر رہے گا!' : 'Correct! ${currentItem.labelEn} stays at home!',
+          langCode: isUrdu ? 'ur' : 'en',
+        );
       }
+
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (!mounted) return;
+
+        if (_currentIndex < _items.length - 1) {
+          setState(() {
+            _currentIndex++;
+            _isAnsweredCorrectly = false;
+          });
+          _speakCurrentItem();
+        } else {
+          // All items sorted
+          TtsService.instance.speak(
+            isUrdu ? 'شاندار! آپ نے تمام چیزیں بالکل درست پہچان لیں!' : 'Superstar! All items sorted perfectly! Fantastic job!',
+            langCode: isUrdu ? 'ur' : 'en',
+          );
+          Future.delayed(const Duration(milliseconds: 600), () {
+            if (mounted) widget.onGameCompleted();
+          });
+        }
+      });
+    } else {
+      // Gentle wrong feedback
+      setState(() {
+        _isWigglingWrong = true;
+      });
+
+      if (currentItem.isSchoolItem) {
+        TtsService.instance.speak(
+          isUrdu ? 'آئیں دوبارہ سوچیں! کیا ہم ${currentItem.labelUr} اسکول لے جاتے ہیں؟' : 'Let\'s think! Do we take ${currentItem.labelEn} to school? Try again!',
+          langCode: isUrdu ? 'ur' : 'en',
+        );
+      } else {
+        TtsService.instance.speak(
+          isUrdu ? 'آئیں سوچیں! کیا ${currentItem.labelUr} اسکول کی چیز ہے؟ دوبارہ کوشش کریں!' : 'Let\'s think! Is ${currentItem.labelEn} a school item? Try again!',
+          langCode: isUrdu ? 'ur' : 'en',
+        );
+      }
+
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) setState(() => _isWigglingWrong = false);
+      });
     }
   }
 
@@ -106,6 +176,7 @@ class _MatchingSortingGameState extends State<MatchingSortingGame> {
   Widget build(BuildContext context) {
     final isUrdu = LocalizationService.instance.isUrdu;
     final prompt = isUrdu ? widget.promptUr : widget.promptEn;
+    final currentItem = _items[_currentIndex];
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -122,7 +193,7 @@ class _MatchingSortingGameState extends State<MatchingSortingGame> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.category_rounded, color: AppTheme.mintGreen, size: 26),
+              const Icon(Icons.backpack_rounded, color: AppTheme.primaryOrange, size: 26),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -134,116 +205,242 @@ class _MatchingSortingGameState extends State<MatchingSortingGame> {
           ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
 
-        // 2 Target Category Bins (School vs Home)
+        // Progress Pill Tracker
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: AppTheme.softCardShadow,
+          ),
+          child: Row(
+            children: [
+              Text(
+                isUrdu ? 'چیز ${_currentIndex + 1} از ${_items.length}' : 'Item ${_currentIndex + 1} of ${_items.length}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Row(
+                  children: List.generate(_items.length, (idx) {
+                    final isDone = idx < _currentIndex;
+                    final isCurrent = idx == _currentIndex;
+
+                    return Expanded(
+                      child: Container(
+                        height: 6,
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        decoration: BoxDecoration(
+                          color: isDone
+                              ? AppTheme.mintGreen
+                              : (isCurrent ? AppTheme.primaryOrange : Colors.grey.shade200),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Single Active Item Card
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 350),
+          transitionBuilder: (child, animation) {
+            return ScaleTransition(scale: animation, child: FadeTransition(opacity: animation, child: child));
+          },
+          child: Container(
+            key: ValueKey<int>(_currentIndex),
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: AppTheme.softCardShadow,
+              border: Border.all(
+                color: _isAnsweredCorrectly
+                    ? AppTheme.mintGreen
+                    : currentItem.gradient.colors.first.withValues(alpha: 0.35),
+                width: 2.5,
+              ),
+            ),
+            child: Column(
+              children: [
+                // Item Visual Container
+                Container(
+                  width: 96,
+                  height: 96,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: currentItem.gradient,
+                    boxShadow: AppTheme.heavyShadow(currentItem.gradient.colors.first, opacity: 0.4, blur: 18),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      currentItem.icon,
+                      color: Colors.white,
+                      size: 50,
+                    ),
+                  ),
+                ).animate(target: _isWigglingWrong ? 1 : 0).shake(duration: 400.ms, curve: Curves.easeInOut),
+
+                const SizedBox(height: 16),
+
+                // Item Name (Urdu & English)
+                Text(
+                  isUrdu ? currentItem.labelUr : currentItem.labelEn,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  isUrdu ? currentItem.labelEn : currentItem.labelUr,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Question pill
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.scaffoldBackground,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    isUrdu ? 'کیا یہ اسکول کی چیز ہے؟' : 'Is this for school?',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 18),
+
+        // Big Option Buttons Right Below Item
         Row(
           children: [
+            // Button 1: School Item (🎒 اسکول کی چیز)
             Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: AppTheme.softCardShadow,
-                  border: Border.all(color: AppTheme.electricBlue, width: 2),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(Icons.backpack_rounded, color: AppTheme.electricBlue, size: 30),
-                    const SizedBox(height: 4),
-                    Text(
-                      isUrdu ? 'اسکول بیگ' : 'School Bag',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.electricBlue),
+              child: SizedBox(
+                height: 70,
+                child: ElevatedButton(
+                  onPressed: () => _onAnswerSelected(true),
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    elevation: 4,
+                    shadowColor: AppTheme.electricBlue.withValues(alpha: 0.4),
+                  ),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.blueCyanGradient,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 4,
-                      children: _sortedSchool.map((i) => const Icon(Icons.check_circle_rounded, color: AppTheme.mintGreen, size: 20)).toList(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.backpack_rounded, color: Colors.white, size: 22),
+                              SizedBox(width: 6),
+                              Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            isUrdu ? 'اسکول کی چیز' : 'School Item',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
+
             const SizedBox(width: 12),
+
+            // Button 2: Not School Item (🏠 گھر کی چیز)
             Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: AppTheme.softCardShadow,
-                  border: Border.all(color: AppTheme.purpleStart, width: 2),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(Icons.home_rounded, color: AppTheme.purpleStart, size: 30),
-                    const SizedBox(height: 4),
-                    Text(
-                      isUrdu ? 'گھر کا کمرہ' : 'Home Bedroom',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.purpleStart),
+              child: SizedBox(
+                height: 70,
+                child: ElevatedButton(
+                  onPressed: () => _onAnswerSelected(false),
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    elevation: 4,
+                    shadowColor: AppTheme.primaryOrange.withValues(alpha: 0.4),
+                  ),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.orangePinkGradient,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 4,
-                      children: _sortedHome.map((i) => const Icon(Icons.check_circle_rounded, color: AppTheme.mintGreen, size: 20)).toList(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.home_rounded, color: Colors.white, size: 22),
+                              SizedBox(width: 6),
+                              Icon(Icons.cancel_rounded, color: Colors.white, size: 18),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            isUrdu ? 'گھر کی چیز' : 'Not for School',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ],
         ),
 
-        const SizedBox(height: 20),
-
-        Text(
-          isUrdu ? 'چیز پر کلک کر کے صحیح جگہ ڈالیں:' : 'Tap each item to sort into the right place:',
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.textSecondary),
-        ),
-
-        const SizedBox(height: 10),
-
-        // Available items to sort
-        ..._availableItems.map((item) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                gradient: item.gradient,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: AppTheme.heavyShadow(item.gradient.colors.first, opacity: 0.35, blur: 10),
-              ),
-              child: Row(
-                children: [
-                  Icon(item.icon, color: Colors.white, size: 24),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      isUrdu ? item.labelUr : item.labelEn,
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14),
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.backpack_rounded, color: Colors.white),
-                        tooltip: 'Put in School Bag',
-                        onPressed: () => _sortItem(item, 'school'),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.home_rounded, color: Colors.white),
-                        tooltip: 'Put in Home',
-                        onPressed: () => _sortItem(item, 'home'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ).animate().fadeIn(duration: 300.ms).slideX(begin: 0.05, end: 0);
-        }),
+        const SizedBox(height: 16),
       ],
     );
   }

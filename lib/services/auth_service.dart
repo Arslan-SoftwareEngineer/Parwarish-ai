@@ -12,20 +12,36 @@ class AuthService {
   FirebaseAuth? _auth;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  static const String keyUserRole = 'user_role'; // 'parent', 'child', 'therapist'
+  static const String keyUserRole = 'user_role'; // 'therapist', 'admin', 'parent', 'child'
+  static const String keyDefaultDeviceMode = 'default_device_mode'; // 'child' | 'parent'
   static const String keyCurrentUid = 'current_user_uid';
   static const String keyCurrentEmail = 'current_user_email';
+  static const String keyCurrentName = 'current_user_name';
+  static const String keyLicenseNumber = 'license_number';
   static const String keyActiveChildId = 'active_child_id';
   static const String keyActiveAutismLevel = 'active_autism_level';
 
   String? _currentUserUid;
   String? _currentUserEmail;
+  String? _currentUserName;
+  String? _licenseNumber;
   String _userRole = '';
+  String? _defaultDeviceMode;
 
-  String get currentUserUid => _currentUserUid ?? 'parent_demo_01';
-  String get currentUserEmail => _currentUserEmail ?? 'parent@parwarish.ai';
+  String get currentUserUid => _currentUserUid ?? 'therapist_demo_01';
+  String get currentUserEmail => _currentUserEmail ?? 'dr_ayesha@parwarish.ai';
+  String get currentUserName => _currentUserName ?? (canManageChildren ? 'Dr. Ayesha Khan, BCBA-D' : 'Parent User');
+  String get licenseNumber => _licenseNumber ?? 'BCBA-PK-88492';
   String get userRole => _userRole;
+  String? get defaultDeviceMode => _defaultDeviceMode;
   bool get isLoggedIn => _userRole.isNotEmpty;
+
+  // Strict Access Control Getters
+  bool get isTherapist => _userRole == 'therapist';
+  bool get isAdmin => _userRole == 'admin';
+  bool get isParent => _userRole == 'parent';
+  bool get isChild => _userRole == 'child';
+  bool get canManageChildren => _userRole == 'therapist' || _userRole == 'admin';
 
   Future<void> init() async {
     try {
@@ -43,8 +59,21 @@ class AuthService {
 
     final prefs = await SharedPreferences.getInstance();
     _userRole = prefs.getString(keyUserRole) ?? '';
+    _defaultDeviceMode = prefs.getString(keyDefaultDeviceMode);
     _currentUserUid ??= prefs.getString(keyCurrentUid);
     _currentUserEmail ??= prefs.getString(keyCurrentEmail);
+    _currentUserName = prefs.getString(keyCurrentName);
+    _licenseNumber = prefs.getString(keyLicenseNumber);
+  }
+
+  Future<void> setDefaultDeviceMode(String? mode) async {
+    _defaultDeviceMode = mode;
+    final prefs = await SharedPreferences.getInstance();
+    if (mode == null) {
+      await prefs.remove(keyDefaultDeviceMode);
+    } else {
+      await prefs.setString(keyDefaultDeviceMode, mode);
+    }
   }
 
   Future<void> cacheUserRole(String role) async {
@@ -74,6 +103,8 @@ class AuthService {
     required String email,
     required String password,
     required String role,
+    String? name,
+    String? licenseNum,
   }) async {
     try {
       if (_auth != null) {
@@ -90,10 +121,15 @@ class AuthService {
         _currentUserEmail = email.trim();
       }
 
+      _currentUserName = name ?? (role == 'therapist' ? 'Dr. Ayesha Khan, BCBA' : (role == 'admin' ? 'Clinical Director' : 'Parent'));
+      _licenseNumber = licenseNum ?? (role == 'therapist' ? 'BCBA-PK-88492' : null);
+
       await cacheUserRole(role);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(keyCurrentUid, _currentUserUid!);
       await prefs.setString(keyCurrentEmail, _currentUserEmail!);
+      if (_currentUserName != null) await prefs.setString(keyCurrentName, _currentUserName!);
+      if (_licenseNumber != null) await prefs.setString(keyLicenseNumber, _licenseNumber!);
 
       if (role == 'parent') {
         await FirebaseService.instance.saveParent(
@@ -159,16 +195,33 @@ class AuthService {
   // --- DEMO QUICK ACCESS SIGN IN ---
   Future<bool> signInDemo({required String role}) async {
     if (role == 'therapist') {
-      _currentUserUid = 'therapist_dr_ayesha';
-      _currentUserEmail = 'dr.ayesha@parwarish.ai';
+      _currentUserUid = 'therapist_demo_01';
+      _currentUserEmail = 'dr_ayesha@parwarish.ai';
+      _currentUserName = 'Dr. Ayesha Khan, BCBA-D';
+      _licenseNumber = 'BCBA-PK-88492';
+    } else if (role == 'admin') {
+      _currentUserUid = 'admin_demo_01';
+      _currentUserEmail = 'admin@parwarish.ai';
+      _currentUserName = 'Clinical Admin Officer';
+      _licenseNumber = 'DIR-CLINICAL-001';
+    } else if (role == 'child') {
+      _currentUserUid = 'child_demo_01';
+      _currentUserEmail = 'child@parwarish.ai';
+      _currentUserName = 'Aayan';
+      _licenseNumber = null;
     } else {
       _currentUserUid = 'parent_demo_01';
       _currentUserEmail = 'parent@parwarish.ai';
+      _currentUserName = 'Parent User';
+      _licenseNumber = null;
     }
+
     await cacheUserRole(role);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyCurrentUid, _currentUserUid!);
     await prefs.setString(keyCurrentEmail, _currentUserEmail!);
+    if (_currentUserName != null) await prefs.setString(keyCurrentName, _currentUserName!);
+    if (_licenseNumber != null) await prefs.setString(keyLicenseNumber, _licenseNumber!);
     return true;
   }
 
@@ -180,10 +233,14 @@ class AuthService {
     _userRole = '';
     _currentUserUid = null;
     _currentUserEmail = null;
+    _currentUserName = null;
+    _licenseNumber = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(keyUserRole);
     await prefs.remove(keyCurrentUid);
     await prefs.remove(keyCurrentEmail);
+    await prefs.remove(keyCurrentName);
+    await prefs.remove(keyLicenseNumber);
     await prefs.remove(keyActiveChildId);
     await prefs.remove(keyActiveAutismLevel);
   }

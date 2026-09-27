@@ -30,7 +30,7 @@ class _BreatheCircleWidgetState extends State<BreatheCircleWidget> with SingleTi
       duration: const Duration(seconds: 4),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.75, end: 1.25).animate(
+    _scaleAnimation = Tween<double>(begin: 0.85, end: 1.15).animate(
       CurvedAnimation(parent: _breatheController, curve: Curves.easeInOutSine),
     );
 
@@ -66,62 +66,69 @@ class _BreatheCircleWidgetState extends State<BreatheCircleWidget> with SingleTi
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AnimatedBuilder(
-          animation: _breatheController,
-          builder: (context, child) {
-            final scale = _scaleAnimation.value + (widget.soundLevel * 0.15);
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                // Outer Ripple Ring
-                Transform.scale(
-                  scale: scale * 1.2,
-                  child: Container(
-                    width: 170,
-                    height: 170,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppTheme.electricCyan.withValues(alpha: 0.18),
-                    ),
-                  ),
-                ),
-                // Middle Pulsing Ring
-                Transform.scale(
-                  scale: scale * 1.1,
-                  child: Container(
-                    width: 150,
-                    height: 150,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppTheme.electricBlue.withValues(alpha: 0.3),
-                    ),
-                  ),
-                ),
-                // Center Glowing Core
-                Transform.scale(
-                  scale: scale,
-                  child: Container(
-                    width: 130,
-                    height: 130,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: AppTheme.blueCyanGradient,
-                      boxShadow: AppTheme.heavyShadow(AppTheme.electricBlue, opacity: 0.5, blur: 24),
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.air_rounded,
-                        color: Colors.white,
-                        size: 48,
+        // Bounded container ensuring scale ripple never overflows upwards/downwards
+        SizedBox(
+          height: 200,
+          width: double.infinity,
+          child: Center(
+            child: AnimatedBuilder(
+              animation: _breatheController,
+              builder: (context, child) {
+                final scale = _scaleAnimation.value + (widget.soundLevel * 0.1);
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Outer Ripple Ring
+                    Transform.scale(
+                      scale: scale * 1.15,
+                      child: Container(
+                        width: 145,
+                        height: 145,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppTheme.electricCyan.withValues(alpha: 0.15),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
-            );
-          },
+                    // Middle Pulsing Ring
+                    Transform.scale(
+                      scale: scale * 1.08,
+                      child: Container(
+                        width: 125,
+                        height: 125,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppTheme.electricBlue.withValues(alpha: 0.25),
+                        ),
+                      ),
+                    ),
+                    // Center Glowing Core
+                    Transform.scale(
+                      scale: scale,
+                      child: Container(
+                        width: 105,
+                        height: 105,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: AppTheme.blueCyanGradient,
+                          boxShadow: AppTheme.heavyShadow(AppTheme.electricBlue, opacity: 0.45, blur: 20),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.air_rounded,
+                            color: Colors.white,
+                            size: 44,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           decoration: BoxDecoration(
@@ -132,7 +139,7 @@ class _BreatheCircleWidgetState extends State<BreatheCircleWidget> with SingleTi
           child: Text(
             prompt,
             style: const TextStyle(
-              fontSize: 18,
+              fontSize: 17,
               fontWeight: FontWeight.bold,
               color: AppTheme.textPrimary,
             ),

@@ -1,4 +1,52 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class StreakService {
+  /// Fetches the child's document, evaluates login date difference,
+  /// updates Firestore streak and timestamp, and returns the new streak.
+  static Future<int> checkAndUpdateStreak({
+    required String childId,
+    required DocumentReference childDocRef,
+    DateTime? nowOverride,
+  }) async {
+    final snapshot = await childDocRef.get();
+    final data = (snapshot.data() as Map<String, dynamic>?) ?? {};
+
+    final lastLogin = (data['last_login'] as Timestamp?)?.toDate();
+    final currentStreak = ((data['current_streak'] ?? 0) as num).toInt();
+
+    final now = nowOverride ?? DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    int newStreak;
+    int? differenceInDays;
+
+    if (lastLogin == null) {
+      newStreak = 1;
+    } else {
+      final lastDay = DateTime(lastLogin.year, lastLogin.month, lastLogin.day);
+      differenceInDays = today.difference(lastDay).inDays;
+
+      if (differenceInDays == 1) {
+        newStreak = currentStreak + 1;
+      } else if (differenceInDays > 1) {
+        newStreak = 1;
+      } else if (differenceInDays == 0) {
+        newStreak = currentStreak;
+      } else {
+        newStreak = currentStreak > 0 ? currentStreak : 1;
+      }
+    }
+
+    if (differenceInDays != 0 || lastLogin == null) {
+      await childDocRef.update({
+        'last_login': FieldValue.serverTimestamp(),
+        'current_streak': newStreak,
+      });
+    }
+
+    return newStreak;
+  }
+
   /// Computes the new streak based on the last login date and current date.
   /// - If last login was today: keep current streak (or 1 if 0).
   /// - If last login was yesterday: increment current streak by 1.

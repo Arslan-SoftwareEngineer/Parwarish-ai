@@ -27,11 +27,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Parwarish.ai uses the camera to allow children to practice emotion recognition and mirror routines.</string>
+	<string>Parwarish.ai needs camera access to detect facial expressions and encourage positive emotional feedback during lessons.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Parwarish.ai uses the microphone to validate speech responses and calm breathing exercises.</string>
+	<string>Parwarish.ai needs microphone access to listen to speech exercises and breathing exercises.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Parwarish.ai uses speech recognition to encourage children to vocalize keywords during lessons.</string>
+	<string>Parwarish.ai needs speech recognition to validate verbal prompts from the child.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
