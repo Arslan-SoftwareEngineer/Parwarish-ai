@@ -14,7 +14,7 @@ void main() {
 
   testWidgets('ParwarishApp launches with WelcomeScreen showing Parent Portal and Child Space, and NO Therapist role', (WidgetTester tester) async {
     await tester.pumpWidget(const ParwarishApp());
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
 
     expect(find.byType(WelcomeScreen), findsOneWidget);
     expect(find.text('Parwarish.ai'), findsOneWidget);

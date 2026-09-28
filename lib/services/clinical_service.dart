@@ -179,6 +179,15 @@ class ClinicalService {
 
     if (_mockChildren.containsKey(childId)) {
       _mockChildren[childId] = _mockChildren[childId]!.copyWith(activeGoals: goals);
+    } else {
+      _mockChildren[childId] = ChildProfile(
+        id: childId,
+        parentUid: 'parent_demo_01',
+        name: 'Child',
+        autismLevel: 'Moderate',
+        currentStreak: 0,
+        activeGoals: goals,
+      );
     }
   }
 

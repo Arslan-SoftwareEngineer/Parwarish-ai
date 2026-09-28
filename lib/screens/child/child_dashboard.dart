@@ -4,11 +4,17 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/child_model.dart';
+import '../../models/daily_session_model.dart';
 import '../../theme/app_theme.dart';
 import '../../services/localization_service.dart';
+import '../../services/clinical_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/notification_service.dart';
 import 'lesson_screen.dart';
 import '../welcome_screen.dart';
 import '../games/games_registry.dart';
+import '../settings/child_settings_screen.dart';
+import 'child_profile_selection.dart';
 
 class AdaptiveLessonItem {
   final String title;
@@ -51,18 +57,14 @@ class _ChildDashboardState extends State<ChildDashboard> {
   bool isCelebrating = false;
   int _currentTabIndex = 0;
   Timer? _celebrationTimer;
-  String _selectedGameCategory = 'all';
 
-  // Visual schedule items state
-  final Map<String, bool> _scheduleCompletion = {
-    'Morning Routine: Wake Up & Stretch': true,
-    'Morning Routine: Wash Hands & Face': true,
-    'Morning Routine: Healthy Breakfast': false,
-    'Afternoon: Creative Drawing & Play': false,
-    'Afternoon: Sensory Breathe Break': false,
-    'Evening: Pack Toys in Bin': false,
-    'Evening: Bedtime Story & Rest': false,
-  };
+  // Active clinical goals assigned by therapist
+  List<ActiveGoalItem> _activeGoals = [];
+  List<AdaptiveLessonItem> _assignedQuests = [];
+  List<GameMetadata> _assignedGames = [];
+
+  // Dynamic visual schedule items state (auto-marked on quest/game completion)
+  final Map<String, bool> _scheduleCompletion = {};
 
   @override
   void initState() {
@@ -94,7 +96,351 @@ class _ChildDashboardState extends State<ChildDashboard> {
       _autismLevel = prefs.getString('autism_level') ?? 'Moderate';
     }
 
+    // Load therapist-assigned goals for this child (Requirement 3)
+    final goals = await ClinicalService.instance.fetchChildGoals(_childId);
+    if (goals.isNotEmpty) {
+      _activeGoals = goals;
+    } else {
+      _activeGoals = _getDefaultGoalsForLevel(_autismLevel);
+    }
+
+    _assignedQuests = _getTherapistAssignedQuests();
+    _assignedGames = _getTherapistAssignedGames();
+
+    await _initSchedule();
+
     if (mounted) setState(() {});
+  }
+
+  List<ActiveGoalItem> _getDefaultGoalsForLevel(String level) {
+    switch (level.toLowerCase()) {
+      case 'severe':
+        return [
+          ActiveGoalItem(
+            goalId: 'g_06_02',
+            domainId: 6,
+            domainName: 'Emotional Recognition',
+            goalTitle: 'Emotions Mirror',
+            assignedAt: DateTime.now(),
+          ),
+          ActiveGoalItem(
+            goalId: 'g_08_01',
+            domainId: 8,
+            domainName: 'ADL Hygiene',
+            goalTitle: 'Wash Hands',
+            assignedAt: DateTime.now(),
+          ),
+          ActiveGoalItem(
+            goalId: 'g_07_01',
+            domainId: 7,
+            domainName: 'Sensory Regulation',
+            goalTitle: 'Calm Down',
+            assignedAt: DateTime.now(),
+          ),
+        ];
+      case 'mild':
+        return [
+          ActiveGoalItem(
+            goalId: 'g_09_01',
+            domainId: 9,
+            domainName: 'Fine Motor / Dressing',
+            goalTitle: 'Tie Shoes',
+            assignedAt: DateTime.now(),
+          ),
+          ActiveGoalItem(
+            goalId: 'g_08_02',
+            domainId: 8,
+            domainName: 'Personal Hygiene',
+            goalTitle: 'Brush Hair',
+            assignedAt: DateTime.now(),
+          ),
+          ActiveGoalItem(
+            goalId: 'g_14_01',
+            domainId: 14,
+            domainName: 'Organization',
+            goalTitle: 'Pack Bag',
+            assignedAt: DateTime.now(),
+          ),
+        ];
+      case 'moderate':
+      default:
+        return [
+          ActiveGoalItem(
+            goalId: 'g_08_01',
+            domainId: 8,
+            domainName: 'ADL Hygiene',
+            goalTitle: 'Wash Hands',
+            assignedAt: DateTime.now(),
+          ),
+          ActiveGoalItem(
+            goalId: 'g_09_02',
+            domainId: 9,
+            domainName: 'Dressing',
+            goalTitle: 'Dress Up',
+            assignedAt: DateTime.now(),
+          ),
+          ActiveGoalItem(
+            goalId: 'g_11_01',
+            domainId: 11,
+            domainName: 'Eating Routine',
+            goalTitle: 'Eating Routine',
+            assignedAt: DateTime.now(),
+          ),
+        ];
+    }
+  }
+
+  AdaptiveLessonItem _createQuestForGoal(ActiveGoalItem goal) {
+    final titleLower = goal.goalTitle.toLowerCase();
+    final domain = goal.domainId;
+
+    if (titleLower.contains('hand') || titleLower.contains('wash') || domain == 8) {
+      return const AdaptiveLessonItem(
+        title: 'Wash Hands',
+        titleUrdu: 'ہاتھ دھونا',
+        interactionType: 'voice',
+        videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
+        englishPrompt: 'Say "Clean bubbles" while washing your hands!',
+        urduPrompt: 'ہاتھ دھوتے وقت کہیں "صاف جھاگ"!',
+        icon: Icons.clean_hands_rounded,
+        gradient: AppTheme.blueCyanGradient,
+      );
+    } else if (titleLower.contains('breath') || titleLower.contains('calm') || domain == 7) {
+      return const AdaptiveLessonItem(
+        title: 'Calm Down',
+        titleUrdu: 'پرسکون سانس',
+        interactionType: 'breathe',
+        videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+        englishPrompt: 'Breathe in slowly like smelling a sweet flower.',
+        urduPrompt: 'پھول سونگھنے کی طرح آہستہ سے گہرا سانس لیں۔',
+        icon: Icons.air_rounded,
+        gradient: AppTheme.greenMintGradient,
+      );
+    } else if (titleLower.contains('emotion') || titleLower.contains('facial') || domain == 6) {
+      return const AdaptiveLessonItem(
+        title: 'Emotions Mirror',
+        titleUrdu: 'جذبات کا آئینہ',
+        interactionType: 'camera',
+        videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+        englishPrompt: 'Look at the mirror and smile with joy!',
+        urduPrompt: 'آئینے میں دیکھیں اور خوشی سے مسکرائیں!',
+        icon: Icons.face_rounded,
+        gradient: AppTheme.orangePinkGradient,
+      );
+    } else if (titleLower.contains('shoe') || titleLower.contains('tie')) {
+      return const AdaptiveLessonItem(
+        title: 'Tie Shoes',
+        titleUrdu: 'جوتے کے تسمے باندھنا',
+        interactionType: 'voice',
+        videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
+        englishPrompt: 'Say "Loop and pull" to tie your laces tight!',
+        urduPrompt: 'تسمے باندھتے ہوئے کہیں "لوپ اور کھینچیں"!',
+        icon: Icons.sports_martial_arts_rounded,
+        gradient: AppTheme.purpleBlueGradient,
+      );
+    } else if (titleLower.contains('hair') || titleLower.contains('brush hair')) {
+      return const AdaptiveLessonItem(
+        title: 'Brush Hair',
+        titleUrdu: 'بالوں میں کنگھی کرنا',
+        interactionType: 'voice',
+        videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+        englishPrompt: 'Say "Looking neat" when brushing your hair!',
+        urduPrompt: 'کنگھی کرتے ہوئے کہیں "صاف ستھرا انداز"!',
+        icon: Icons.brush_rounded,
+        gradient: AppTheme.orangePinkGradient,
+      );
+    } else if (titleLower.contains('bag') || titleLower.contains('pack')) {
+      return const AdaptiveLessonItem(
+        title: 'Pack Bag',
+        titleUrdu: 'بستہ تیار کرنا',
+        interactionType: 'voice',
+        videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
+        englishPrompt: 'Say "Books and bottle ready" for school!',
+        urduPrompt: 'کہیں "کتابیں اور بوتل تیار ہیں"!',
+        icon: Icons.backpack_rounded,
+        gradient: AppTheme.blueCyanGradient,
+      );
+    } else if (titleLower.contains('toilet') || domain == 10) {
+      return const AdaptiveLessonItem(
+        title: 'Toilet Routine',
+        titleUrdu: 'بیت الخلاء کی روٹین',
+        interactionType: 'voice',
+        videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
+        englishPrompt: 'Say "Wash hands" after using the bathroom!',
+        urduPrompt: 'بیت الخلاء کے بعد کہیں "ہاتھ دھوئیں"!',
+        icon: Icons.water_drop_rounded,
+        gradient: AppTheme.blueCyanGradient,
+      );
+    } else if (titleLower.contains('dress') || titleLower.contains('clothes')) {
+      return const AdaptiveLessonItem(
+        title: 'Dress Up',
+        titleUrdu: 'کپڑے پہننا',
+        interactionType: 'voice',
+        videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+        englishPrompt: 'Say "Shirt on" as you wear your clean clothes!',
+        urduPrompt: 'کپڑے پہنتے وقت کہیں "شرٹ پہن لی"!',
+        icon: Icons.checkroom_rounded,
+        gradient: AppTheme.orangePinkGradient,
+      );
+    } else if (titleLower.contains('eat') || titleLower.contains('food')) {
+      return const AdaptiveLessonItem(
+        title: 'Eating Routine',
+        titleUrdu: 'کھانا کھانے کی روٹین',
+        interactionType: 'voice',
+        videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
+        englishPrompt: 'Say "Thank you for healthy food" before eating!',
+        urduPrompt: 'کھانے سے پہلے کہیں "شکریہ مزیدار کھانے کے لیے"!',
+        icon: Icons.restaurant_rounded,
+        gradient: AppTheme.greenMintGradient,
+      );
+    } else {
+      return AdaptiveLessonItem(
+        title: goal.goalTitle,
+        titleUrdu: goal.goalTitle,
+        interactionType: 'voice',
+        videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
+        englishPrompt: 'Let\'s practice: ${goal.goalTitle}',
+        urduPrompt: 'آئیے مشق کریں: ${goal.goalTitle}',
+        icon: Icons.star_rounded,
+        gradient: AppTheme.purpleBlueGradient,
+      );
+    }
+  }
+
+  GameMetadata? _getGameForGoal(ActiveGoalItem goal) {
+    final title = goal.goalTitle.toLowerCase();
+    final domain = goal.domainId;
+
+    if (title.contains('hand') || title.contains('wash') || domain == 8) {
+      return GamesRegistry.getGameById('wash_hands');
+    } else if (title.contains('teeth') || title.contains('brush teeth')) {
+      return GamesRegistry.getGameById('brush_teeth');
+    } else if (title.contains('laundry') || domain == 16) {
+      return GamesRegistry.getGameById('laundry_sort');
+    } else if (title.contains('breath') || domain == 7) {
+      return GamesRegistry.getGameById('breathing_flower');
+    } else if (title.contains('bubble')) {
+      return GamesRegistry.getGameById('pop_bubbles');
+    } else if (title.contains('bag') || title.contains('pack')) {
+      return GamesRegistry.getGameById('pack_bag');
+    } else if (title.contains('tower') || title.contains('ring')) {
+      return GamesRegistry.getGameById('shape_tower');
+    } else if (title.contains('fruit') || domain == 17) {
+      return GamesRegistry.getGameById('fruit_merge');
+    } else if (title.contains('toy') || title.contains('cleanup') || domain == 14) {
+      return GamesRegistry.getGameById('toy_chest_cleanup');
+    } else if (title.contains('vehicle') || title.contains('car')) {
+      return GamesRegistry.getGameById('build_vehicle');
+    } else if (title.contains('shadow') || domain == 18) {
+      return GamesRegistry.getGameById('shadow_match');
+    }
+    return null;
+  }
+
+  List<AdaptiveLessonItem> _getTherapistAssignedQuests() {
+    final quests = <AdaptiveLessonItem>[];
+    final seen = <String>{};
+
+    for (final goal in _activeGoals) {
+      final q = _createQuestForGoal(goal);
+      if (!seen.contains(q.title)) {
+        seen.add(q.title);
+        quests.add(q);
+      }
+    }
+
+    if (quests.isEmpty) {
+      return _getLessonsForAutismLevel(_autismLevel);
+    }
+    return quests;
+  }
+
+  List<GameMetadata> _getTherapistAssignedGames() {
+    final games = <GameMetadata>[];
+    final seen = <String>{};
+
+    for (final goal in _activeGoals) {
+      final g = _getGameForGoal(goal);
+      if (g != null && !seen.contains(g.id)) {
+        seen.add(g.id);
+        games.add(g);
+      }
+    }
+
+    if (games.isEmpty) {
+      final defaultGame = GamesRegistry.getGameById('wash_hands');
+      if (defaultGame != null) games.add(defaultGame);
+    }
+    return games;
+  }
+
+  String _getTodayKey() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month}-${now.day}';
+  }
+
+  Future<void> _initSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _getTodayKey();
+    final prefKey = 'schedule_completion_${_childId}_$today';
+
+    _scheduleCompletion.clear();
+    _scheduleCompletion['Morning Routine: Wake Up & Stretch'] = true;
+    for (final q in _assignedQuests) {
+      _scheduleCompletion['Quest: ${q.title}'] = false;
+    }
+    for (final g in _assignedGames) {
+      _scheduleCompletion['Game: ${g.titleEn}'] = false;
+    }
+    _scheduleCompletion['Evening: Bedtime Story & Rest'] = false;
+
+    final savedList = prefs.getStringList(prefKey);
+    if (savedList != null) {
+      for (final item in savedList) {
+        if (_scheduleCompletion.containsKey(item)) {
+          _scheduleCompletion[item] = true;
+        }
+      }
+    }
+  }
+
+  Future<void> _persistSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _getTodayKey();
+    final prefKey = 'schedule_completion_${_childId}_$today';
+    final completed = _scheduleCompletion.entries
+        .where((e) => e.value)
+        .map((e) => e.key)
+        .toList();
+    await prefs.setStringList(prefKey, completed);
+  }
+
+  void _markScheduleItemCompleted(String name, {required bool isGame}) {
+    bool found = false;
+    final search = name.toLowerCase();
+
+    for (final key in _scheduleCompletion.keys.toList()) {
+      final keyLower = key.toLowerCase();
+      if (keyLower.contains(search)) {
+        _scheduleCompletion[key] = true;
+        found = true;
+      }
+    }
+
+    if (!found) {
+      _scheduleCompletion['${isGame ? "Game: " : "Quest: "}$name'] = true;
+    }
+
+    _persistSchedule();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🎉 Schedule auto-marked: $name completed!'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+    }
   }
 
   void _toggleLanguage() {
@@ -231,6 +577,8 @@ class _ChildDashboardState extends State<ChildDashboard> {
         isCelebrating = true;
         _currentStreak += 1;
         _completedDailyActivities += 1;
+        // Auto-mark quest completion in schedule (Requirement 4)
+        _markScheduleItemCompleted(item.title, isGame: false);
       });
       _celebrationTimer?.cancel();
       _celebrationTimer = Timer(const Duration(minutes: 2), () {
@@ -242,6 +590,7 @@ class _ChildDashboardState extends State<ChildDashboard> {
   }
 
   Future<void> _openAdlGame(String gameId) async {
+    final game = GamesRegistry.getGameById(gameId);
     final result = await GamesRegistry.openGame(
       context,
       gameId,
@@ -254,6 +603,10 @@ class _ChildDashboardState extends State<ChildDashboard> {
         isCelebrating = true;
         _currentStreak += 1;
         _completedDailyActivities += 1;
+        // Auto-mark game completion in schedule (Requirement 4)
+        if (game != null) {
+          _markScheduleItemCompleted(game.titleEn, isGame: true);
+        }
       });
       _celebrationTimer?.cancel();
       _celebrationTimer = Timer(const Duration(minutes: 2), () {
@@ -265,7 +618,8 @@ class _ChildDashboardState extends State<ChildDashboard> {
   }
 
   int _completedDailyActivities = 1;
-  final int _assignedDailyActivities = 3;
+  int get _assignedDailyActivities =>
+      (_assignedQuests.length + _assignedGames.length).clamp(1, 10);
 
   double get _petEnergyProgress =>
       (_completedDailyActivities / _assignedDailyActivities).clamp(0.0, 1.0);
@@ -451,11 +805,157 @@ class _ChildDashboardState extends State<ChildDashboard> {
     );
   }
 
+  Future<void> _handleChildSettingsClick() async {
+    // Requirement 7: Whenever child clicks on settings to change it and is shown the parent login screen,
+    // a notification to the parent app must be given letting them know that their child is trying to change the settings.
+    await ParentNotificationService.instance.sendNotification(
+      title: 'Security Alert: Settings Access Attempt',
+      message: '$_childName is attempting to access and modify settings on the child device.',
+      type: 'settings_access_attempt',
+    );
+
+    if (mounted) {
+      _showParentSettingsLoginDialog();
+    }
+  }
+
+  void _showParentSettingsLoginDialog() {
+    final emailController = TextEditingController(text: AuthService.instance.currentUserEmail);
+    final passwordController = TextEditingController();
+    bool obscure = true;
+    String? errorMsg;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (gateCtx) {
+        return StatefulBuilder(
+          builder: (context, setGateState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6A11CB).withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.shield_rounded, color: Color(0xFF6A11CB), size: 24),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      isUrdu ? 'والدین کی توثیق' : 'Parent Authorization',
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF3C7),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFCD34D)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.notifications_active_rounded, color: Color(0xFFD97706), size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              isUrdu
+                                  ? 'والدین کو الرٹ بھیج دیا گیا ہے۔ سیٹنگز تبدیل کرنے کے لیے پیرنٹ لاگ ان درج کریں۔'
+                                  : 'Parent app notified. Enter parent credentials to authorize setting changes.',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      key: const Key('parent_gate_email'),
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        labelText: isUrdu ? 'والدین کا ای میل' : 'Parent Email',
+                        prefixIcon: const Icon(Icons.email_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      key: const Key('parent_gate_password'),
+                      controller: passwordController,
+                      obscureText: obscure,
+                      decoration: InputDecoration(
+                        labelText: isUrdu ? 'پاس ورڈ' : 'Parent Password',
+                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
+                          onPressed: () => setGateState(() => obscure = !obscure),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                    if (errorMsg != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        errorMsg!,
+                        style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(gateCtx).pop(),
+                  child: Text(isUrdu ? 'منسوخ' : 'Cancel'),
+                ),
+                ElevatedButton(
+                  key: const Key('parent_gate_unlock_btn'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6A11CB),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () {
+                    final email = emailController.text.trim();
+                    final pass = passwordController.text.trim();
+                    if (email.isEmpty || pass.isEmpty) {
+                      setGateState(() => errorMsg = isUrdu ? 'براہ کرم ای میل اور پاس ورڈ درج کریں۔' : 'Please enter email and password.');
+                      return;
+                    }
+                    if (email.contains('@') && pass.isNotEmpty) {
+                      Navigator.of(gateCtx).pop();
+                      if (mounted) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ChildSettingsScreen()),
+                        );
+                      }
+                    } else {
+                      setGateState(() => errorMsg = isUrdu ? 'غلط معلومات' : 'Invalid parent credentials.');
+                    }
+                  },
+                  child: Text(isUrdu ? 'ان لاک کریں' : 'Unlock Settings', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showParentGateModal() {
-    int num1 = 6;
-    int num2 = 5;
-    int answer = num1 + num2;
-    final controller = TextEditingController();
+    final passwordController = TextEditingController();
 
     showDialog(
       context: context,
@@ -466,28 +966,22 @@ class _ChildDashboardState extends State<ChildDashboard> {
             children: [
               Icon(Icons.shield_rounded, color: Color(0xFF6A11CB)),
               SizedBox(width: 8),
-              Text('Parent Verification', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text('Parent Authorization', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Enter answer to switch to Parent Portal:'),
-              const SizedBox(height: 10),
-              Center(
-                child: Text(
-                  '$num1 + $num2 = ?',
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF6A11CB)),
-                ),
-              ),
-              const SizedBox(height: 10),
+              const Text('Enter parent password to switch to Parent Portal:'),
+              const SizedBox(height: 12),
               TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
+                controller: passwordController,
+                obscureText: true,
                 autofocus: true,
                 decoration: InputDecoration(
-                  hintText: 'Answer',
+                  labelText: 'Parent Password',
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
@@ -504,10 +998,11 @@ class _ChildDashboardState extends State<ChildDashboard> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () async {
-                if (int.tryParse(controller.text.trim()) == answer) {
+                if (passwordController.text.trim().isNotEmpty) {
                   Navigator.of(gateCtx).pop();
                   final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('default_device_mode', 'parent');
+                  await prefs.setString('selected_device_space', 'parent');
+                  await AuthService.instance.setDefaultDeviceMode('parent');
                   if (mounted) {
                     Navigator.of(context).pushReplacement(
                       MaterialPageRoute(builder: (_) => const WelcomeScreen()),
@@ -526,24 +1021,25 @@ class _ChildDashboardState extends State<ChildDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.scaffoldBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         elevation: 1,
         shadowColor: Colors.black.withOpacity(0.04),
         leading: IconButton(
-          icon: const Icon(Icons.home_rounded, color: AppTheme.textPrimary),
-          tooltip: 'Back to Welcome',
+          icon: const Icon(Icons.people_outline_rounded, color: AppTheme.textPrimary),
+          tooltip: 'Switch Child Profile',
           onPressed: () {
             Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+              MaterialPageRoute(
+                builder: (_) => ChildProfileSelection(parentUid: AuthService.instance.currentUserUid),
+              ),
             );
           },
         ),
         title: Text(
           isUrdu ? '$_childName کی جگہ' : '$_childName\'s Space',
           style: const TextStyle(
-            color: AppTheme.textPrimary,
             fontWeight: FontWeight.w900,
             fontSize: 18,
           ),
@@ -575,7 +1071,15 @@ class _ChildDashboardState extends State<ChildDashboard> {
               ],
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
+
+          // Settings Button (Req 7)
+          IconButton(
+            key: const Key('child_settings_btn'),
+            icon: const Icon(Icons.settings_rounded, color: AppTheme.textPrimary),
+            tooltip: 'Settings',
+            onPressed: _handleChildSettingsClick,
+          ),
 
           // Child Profile Button (Req 19)
           IconButton(
@@ -835,9 +1339,15 @@ class _ChildDashboardState extends State<ChildDashboard> {
     );
   }
 
-  /// Tab 0: Learn Tab (Personalized adaptive curriculum without autism tags)
+  /// Tab 0: Learn Tab (Showing ONLY therapist-assigned quests and games, without category filters)
   Widget _buildLearnTab() {
-    final lessons = _getLessonsForAutismLevel(_autismLevel);
+    final lessons = _assignedQuests.isNotEmpty
+        ? _assignedQuests
+        : _getLessonsForAutismLevel(_autismLevel);
+
+    final games = _assignedGames.isNotEmpty
+        ? _assignedGames
+        : _getTherapistAssignedGames();
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -846,11 +1356,10 @@ class _ChildDashboardState extends State<ChildDashboard> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              isUrdu ? 'آج کے انٹرایکٹو اسباق' : 'Today\'s Adaptive Quests',
+              isUrdu ? 'تھراپسٹ کے تفویض کردہ اسباق' : 'Today\'s Assigned Quests',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: AppTheme.textPrimary,
               ),
             ),
             Container(
@@ -860,9 +1369,9 @@ class _ChildDashboardState extends State<ChildDashboard> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: const Color(0xFFBBF7D0)),
               ),
-              child: const Text(
-                '🌟 Daily Quests',
-                style: TextStyle(
+              child: Text(
+                '${lessons.length} Goals',
+                style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF16A34A),
@@ -886,7 +1395,7 @@ class _ChildDashboardState extends State<ChildDashboard> {
                 margin: const EdgeInsets.only(bottom: 14),
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(22),
                   boxShadow: [
                     BoxShadow(
@@ -917,7 +1426,6 @@ class _ChildDashboardState extends State<ChildDashboard> {
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
-                              color: AppTheme.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -937,7 +1445,7 @@ class _ChildDashboardState extends State<ChildDashboard> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.scaffoldBackground,
+                                  color: Theme.of(context).scaffoldBackgroundColor,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
@@ -981,11 +1489,10 @@ class _ChildDashboardState extends State<ChildDashboard> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              isUrdu ? 'روزمرہ مہارتوں کی گیمز' : 'Interactive Skill Games',
+              isUrdu ? 'تھراپسٹ کی تفویض کردہ گیمز' : 'Today\'s Assigned Games',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: AppTheme.textPrimary,
               ),
             ),
             Container(
@@ -995,7 +1502,7 @@ class _ChildDashboardState extends State<ChildDashboard> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                isUrdu ? 'کھیلیں اور سیکھیں' : 'Play & Practice',
+                '${games.length} Active',
                 style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
@@ -1005,24 +1512,9 @@ class _ChildDashboardState extends State<ChildDashboard> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          child: Row(
-            children: [
-              _buildCategoryChip('all', isUrdu ? 'تمام گیمز (11)' : 'All Games (11)'),
-              const SizedBox(width: 8),
-              _buildCategoryChip('adl', isUrdu ? 'روزمرہ مہارتیں (3)' : 'Life Skills / ADL (3)'),
-              const SizedBox(width: 8),
-              _buildCategoryChip('sorting', isUrdu ? 'ترتیب اور چھانٹنا (4)' : 'Sorting & Logic (4)'),
-              const SizedBox(width: 8),
-              _buildCategoryChip('calming', isUrdu ? 'پرسکون اور اسمبل (4)' : 'Sensory & Calming (4)'),
-            ],
-          ),
-        ),
         const SizedBox(height: 14),
-        ..._getFilteredGames().map((game) {
+        // Filter chips removed completely per Requirement 2
+        ...games.map((game) {
           return Material(
             color: Colors.transparent,
             child: InkWell(
@@ -1033,7 +1525,7 @@ class _ChildDashboardState extends State<ChildDashboard> {
                 margin: const EdgeInsets.only(bottom: 14),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(color: game.themeColor.withOpacity(0.2), width: 1.5),
                   boxShadow: [
@@ -1067,7 +1559,6 @@ class _ChildDashboardState extends State<ChildDashboard> {
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w800,
-                              color: AppTheme.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -1106,69 +1597,44 @@ class _ChildDashboardState extends State<ChildDashboard> {
     );
   }
 
-  List<GameMetadata> _getFilteredGames() {
-    if (_selectedGameCategory == 'all') {
-      return GamesRegistry.allGames;
-    }
-    return GamesRegistry.allGames
-        .where((game) => game.category == _selectedGameCategory)
-        .toList();
-  }
-
-  Widget _buildCategoryChip(String category, String label) {
-    final isSelected = _selectedGameCategory == category;
-    return InkWell(
-      key: Key('game_category_chip_$category'),
-      borderRadius: BorderRadius.circular(20),
-      onTap: () {
-        setState(() {
-          _selectedGameCategory = category;
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.electricBlue : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? AppTheme.electricBlue : Colors.black.withOpacity(0.08),
-            width: 1.5,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppTheme.electricBlue.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: isSelected ? Colors.white : AppTheme.textPrimary,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Tab 1: Schedule Tab (Visual Timeline with checkboxes)
+  /// Tab 1: Schedule Tab (Visual Timeline dynamically marked as quests/games finish)
   Widget _buildScheduleTab() {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              isUrdu ? 'روزمرہ روٹین ٹائم لائن' : 'Daily Visual Routine Timeline',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Auto-Tracked',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.green.shade800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         Text(
-          isUrdu ? 'روزمرہ روٹین ٹائم لائن' : 'Daily Visual Routine Timeline',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: AppTheme.textPrimary,
-          ),
+          isUrdu
+              ? 'اسباق اور گیمز مکمل ہونے پر روٹین خودکار طور پر مکمل نشان زد ہوتی ہے۔'
+              : 'Tasks automatically check off when you complete assigned quests and games.',
+          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
         ),
         const SizedBox(height: 14),
         ..._scheduleCompletion.entries.map((entry) {
@@ -1179,10 +1645,10 @@ class _ChildDashboardState extends State<ChildDashboard> {
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isDone ? const Color(0xFF10B981) : Colors.transparent,
+                color: isDone ? const Color(0xFF10B981) : Colors.grey.withOpacity(0.15),
                 width: 1.5,
               ),
               boxShadow: [
@@ -1202,6 +1668,7 @@ class _ChildDashboardState extends State<ChildDashboard> {
                   onChanged: (val) {
                     setState(() {
                       _scheduleCompletion[title] = val ?? false;
+                      _persistSchedule();
                     });
                   },
                 ),
@@ -1213,7 +1680,7 @@ class _ChildDashboardState extends State<ChildDashboard> {
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       decoration: isDone ? TextDecoration.lineThrough : null,
-                      color: isDone ? AppTheme.textLight : AppTheme.textPrimary,
+                      color: isDone ? AppTheme.textLight : null,
                     ),
                   ),
                 ),

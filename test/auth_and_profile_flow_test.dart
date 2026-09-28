@@ -39,6 +39,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
 
       // Tap Parent Portal
+      await tester.ensureVisible(find.byKey(const Key('parent_portal_btn')));
       await tester.tap(find.byKey(const Key('parent_portal_btn')));
       await tester.pumpAndSettle();
 
@@ -46,7 +47,7 @@ void main() {
       final loginScreenFinder = find.byType(ChildLoginScreen);
       final loginScreen = tester.widget<ChildLoginScreen>(loginScreenFinder);
       expect(loginScreen.isParentLogin, isTrue);
-      expect(find.text('Welcome, Parent'), findsOneWidget);
+      expect(find.text('Sign In to Parent Portal'), findsOneWidget);
       expect(find.byKey(const Key('google_sign_in_btn')), findsOneWidget);
       expect(find.byKey(const Key('apple_sign_in_btn')), findsOneWidget);
     });
@@ -60,6 +61,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
 
       // Tap Child Space
+      await tester.ensureVisible(find.byKey(const Key('child_space_btn')));
       await tester.tap(find.byKey(const Key('child_space_btn')));
       await tester.pumpAndSettle();
 
@@ -67,10 +69,10 @@ void main() {
       final loginScreenFinder = find.byType(ChildLoginScreen);
       final loginScreen = tester.widget<ChildLoginScreen>(loginScreenFinder);
       expect(loginScreen.isParentLogin, isFalse);
-      expect(find.text('Welcome to Child Space'), findsOneWidget);
+      expect(find.text('Sign In to Child Space'), findsOneWidget);
     });
 
-    testWidgets('ChildLoginScreen demo login stores user_role in SharedPreferences', (tester) async {
+    testWidgets('ChildLoginScreen email sign-in stores user_role and space in SharedPreferences', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: ChildLoginScreen(isParentLogin: false),
@@ -78,14 +80,20 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 500));
 
-      // Ensure visible and tap demo login
-      await tester.ensureVisible(find.byKey(const Key('demo_login_btn')));
+      // Requirement 5: Demo login button must NOT be present
+      expect(find.byKey(const Key('demo_login_btn')), findsNothing);
+
+      // Enter credentials and tap sign in
+      await tester.enterText(find.byKey(const Key('email_field')), 'child@parwarish.ai');
+      await tester.enterText(find.byKey(const Key('password_field')), 'password123');
+      await tester.ensureVisible(find.byKey(const Key('sign_in_button')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('demo_login_btn')));
+      await tester.tap(find.byKey(const Key('sign_in_button')));
       await tester.pumpAndSettle();
 
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('user_role'), equals('child'));
+      expect(prefs.getString('selected_device_space'), equals('child'));
     });
 
     testWidgets('ChildProfileSelection displays animated grid of child cards', (tester) async {

@@ -10,6 +10,9 @@ import '../../theme/app_theme.dart';
 import 'parent_analytics_view.dart';
 import '../welcome_screen.dart';
 
+import '../../services/notification_service.dart';
+import '../settings/parent_settings_screen.dart';
+
 class ParentDashboard extends StatefulWidget {
   const ParentDashboard({super.key});
 
@@ -80,8 +83,75 @@ class _ParentDashboardState extends State<ParentDashboard> {
     }
   }
 
-  // Child profiles are strictly registered and managed by certified therapists and administrators.
-
+  void _showNotificationsDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return ValueListenableBuilder<List<ParentNotification>>(
+          valueListenable: ParentNotificationService.instance.notificationsNotifier,
+          builder: (context, notifs, _) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.notifications_active_rounded, color: Color(0xFF6A11CB)),
+                  SizedBox(width: 8),
+                  Text('Security & Child Alerts', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: notifs.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Text('No alerts at this time. All child activities are normal.', textAlign: TextAlign.center),
+                    )
+                  : SizedBox(
+                      width: double.maxFinite,
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: notifs.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final n = notifs[index];
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              n.type == 'settings_access_attempt'
+                                  ? Icons.warning_amber_rounded
+                                  : Icons.info_outline_rounded,
+                              color: n.type == 'settings_access_attempt'
+                                  ? Colors.amber.shade700
+                                  : const Color(0xFF6A11CB),
+                            ),
+                            title: Text(n.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            subtitle: Text(n.message, style: const TextStyle(fontSize: 11)),
+                          );
+                        },
+                      ),
+                    ),
+              actions: [
+                if (notifs.isNotEmpty)
+                  TextButton(
+                    onPressed: () {
+                      ParentNotificationService.instance.markAllAsRead();
+                      ParentNotificationService.instance.clearAll();
+                      Navigator.of(dialogCtx).pop();
+                    },
+                    child: const Text('Clear All'),
+                  ),
+                ElevatedButton(
+                  onPressed: () {
+                    ParentNotificationService.instance.markAllAsRead();
+                    Navigator.of(dialogCtx).pop();
+                  },
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   LinearGradient _getCardGradient(int index) {
     final gradients = [
@@ -102,9 +172,9 @@ class _ParentDashboardState extends State<ParentDashboard> {
       valueListenable: LocalizationService.instance.currentLocale,
       builder: (context, locale, _) {
         return Scaffold(
-          backgroundColor: AppTheme.scaffoldBackground,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           appBar: AppBar(
-            backgroundColor: Colors.white,
+            backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
             elevation: 1,
             shadowColor: Colors.black.withOpacity(0.05),
             title: Column(
@@ -113,7 +183,6 @@ class _ParentDashboardState extends State<ParentDashboard> {
                 const Text(
                   'Parent Dashboard',
                   style: TextStyle(
-                    color: AppTheme.textPrimary,
                     fontWeight: FontWeight.w900,
                     fontSize: 18,
                   ),
@@ -129,6 +198,33 @@ class _ParentDashboardState extends State<ParentDashboard> {
               ],
             ),
             actions: [
+              // Notification Bell with unread counter
+              ValueListenableBuilder<int>(
+                valueListenable: ParentNotificationService.instance.unreadCountNotifier,
+                builder: (context, unread, _) {
+                  return IconButton(
+                    key: const Key('parent_notifications_btn'),
+                    icon: Badge(
+                      isLabelVisible: unread > 0,
+                      label: Text('$unread'),
+                      child: const Icon(Icons.notifications_outlined, color: AppTheme.textSecondary),
+                    ),
+                    tooltip: 'Notifications & Alerts',
+                    onPressed: _showNotificationsDialog,
+                  );
+                },
+              ),
+              // Settings Button
+              IconButton(
+                key: const Key('parent_settings_btn'),
+                icon: const Icon(Icons.settings_outlined, color: AppTheme.textSecondary),
+                tooltip: 'Settings',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ParentSettingsScreen()),
+                  );
+                },
+              ),
               IconButton(
                 key: const Key('logout_button'),
                 icon: const Icon(Icons.logout_rounded, color: AppTheme.textSecondary),
